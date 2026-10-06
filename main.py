@@ -7,12 +7,14 @@ from typing import List, Optional
 
 app = FastAPI(title="ISSTA HMC Secure Academic & Biometric Engine")
 
+# FIXED: Added explicit wildcard routing masks to clear browser cross-origin blocks safely
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"]
 )
 
 DB_FILE = "issta_college.db"
@@ -189,18 +191,6 @@ def view_weekly_schedule(semester: str):
     rows = cursor.fetchall()
     conn.close()
     return [{"day": r[0], "time": r[1], "code": r[2], "faculty": r[3], "room": r[4]} for r in rows]
-
-@app.post("/timetable/add")
-def add_timetable_slot(data: TimetableSchema):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO daily_schedule (semester, day_of_week, slot_time, subject_code, faculty_assignment, room_log)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (data.semester, data.day_of_week, data.slot_time, data.subject_code, data.faculty_assignment, data.room_log))
-    conn.commit()
-    conn.close()
-    return {"message": "Timetable period log written safely."}
 
 @app.post("/biometric/register-pass")
 def log_biometric_pass(data: BiometricLog):
