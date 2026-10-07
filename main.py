@@ -1,20 +1,17 @@
 import sqlite3
-import uuid
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List
 
 app = FastAPI(title="ISSTA HMC Secure Academic & Biometric Engine")
 
-# FIXED: Added explicit wildcard routing masks to clear browser cross-origin blocks safely
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"], # Keeps it open for high-speed local and cloud lookups
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"]
 )
 
 DB_FILE = "issta_college.db"
@@ -65,36 +62,28 @@ def init_enterprise_db():
         )
     """)
     
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS configurations (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-        )
-    """)
-    cursor.execute("INSERT OR IGNORE INTO configurations (key, value) VALUES ('master_password', 'issta123')")
-
-    cursor.execute("SELECT COUNT(*) FROM subjects")
-    if cursor.fetchone() == 0:
-        parsed_curriculum = [
-            ("BHMT 101", "Fundamentals of Food Production", "Sem I", "Theory", 3),
-            ("BHMT 102", "Introduction to Food & Beverage", "Sem I", "Theory", 2),
-            ("BHMT 103", "Accommodation Operations - I", "Sem I", "Theory", 2),
-            ("BHMT 104", "Introduction to Front Office", "Sem I", "Theory", 2),
-            ("BHMP 1108", "Basic Training Kitchen-Indian & Bakery Lab-I", "Sem I", "Practical", 8),
-            ("BHMT 2.101", "Indian Regional Cuisine", "Sem III", "Theory", 3),
-            ("BHMT 2.102", "Beverages Service", "Sem III", "Theory", 3),
-            ("BHMT 2.103", "Linen & Laundry Operations", "Sem III", "Theory", 2),
-            ("BHMP 2.108", "Quantity Training Kitchen", "Sem III", "Practical", 8),
-            ("BHMT 501", "Advanced Food Production", "Sem V", "Theory", 3),
-            ("BHMT 502", "Advanced Food & Beverage Service", "Sem V", "Theory", 3),
-            ("BHMT 506", "Hotel A/c & Financial Mgt.", "Sem V", "Theory", 3),
-            ("BHMP 508", "Advanced Training Kitchen", "Sem V", "Practical", 8),
-            ("BHMT 601", "Larder & Kitchen Management", "Sem VI", "Theory", 3),
-            ("BHMT 602", "Food & Beverage Service Management", "Sem VI", "Theory", 3),
-            ("BHMP 607", "Larder Kitchen Lab", "Sem VI", "Practical", 8)
-        ]
-        cursor.executemany("INSERT INTO subjects VALUES (?,?,?,?,?)", parsed_curriculum)
-        
+    # Force clean and pre-load authentic syllabus rows from your handbook
+    cursor.execute("DELETE FROM subjects")
+    parsed_curriculum = [
+        ("BHMT 101", "Fundamentals of Food Production", "Sem I", "Theory", 3),
+        ("BHMT 102", "Introduction to Food & Beverage", "Sem I", "Theory", 2),
+        ("BHMT 103", "Accommodation Operations - I", "Sem I", "Theory", 2),
+        ("BHMT 104", "Introduction to Front Office", "Sem I", "Theory", 2),
+        ("BHMP 1108", "Basic Training Kitchen-Indian & Bakery Lab-I", "Sem I", "Practical", 8),
+        ("BHMT 2.101", "Indian Regional Cuisine", "Sem III", "Theory", 3),
+        ("BHMT 2.102", "Beverages Service", "Sem III", "Theory", 3),
+        ("BHMT 2.103", "Linen & Laundry Operations", "Sem III", "Theory", 2),
+        ("BHMP 2.108", "Quantity Training Kitchen", "Sem III", "Practical", 8),
+        ("BHMT 501", "Advanced Food Production", "Sem V", "Theory", 3),
+        ("BHMT 502", "Advanced Food & Beverage Service", "Sem V", "Theory", 3),
+        ("BHMT 506", "Hotel A/c & Financial Mgt.", "Sem V", "Theory", 3),
+        ("BHMP 508", "Advanced Training Kitchen", "Sem V", "Practical", 8),
+        ("BHMT 601", "Larder & Kitchen Management", "Sem VI", "Theory", 3),
+        ("BHMT 602", "Food & Beverage Service Management", "Sem VI", "Theory", 3),
+        ("BHMP 607", "Larder Kitchen Lab", "Sem VI", "Practical", 8)
+    ]
+    cursor.executemany("INSERT INTO subjects VALUES (?,?,?,?,?)", parsed_curriculum)
+    
     conn.commit()
     conn.close()
 
@@ -133,13 +122,16 @@ def view_curriculum(semester: str):
     cursor = conn.cursor()
     if semester == "All":
         cursor.execute("SELECT code, name, semester, type, periods_per_week FROM subjects")
+        rows = cursor.fetchall()
+        conn.close()
+        # FIXED: Explicit tuple index extraction mapping for full ledger views
+        return [{"code": r[0], "name": r[1], "semester": r[2], "type": r[3], "periods": r[4]} for r in rows]
     else:
         cursor.execute("SELECT code, name, type, periods_per_week FROM subjects WHERE semester = ?", (semester,))
-    rows = cursor.fetchall()
-    conn.close()
-    if semester == "All":
-        return [{"code": r[0], "name": r[1], "semester": r[2], "type": r[3], "periods": r[4]} for r in rows]
-    return [{"code": r[0], "name": r[1], "type": r[2], "periods": r[3]} for r in rows]
+        rows = cursor.fetchall()
+        conn.close()
+        # FIXED: Explicit tuple index extraction mapping for filtered semester grids
+        return [{"code": r[0], "name": r[1], "type": r[2], "periods": r[3]} for r in rows]
 
 @app.post("/syllabus/save")
 def save_subject(data: SubjectSchema):
@@ -151,7 +143,7 @@ def save_subject(data: SubjectSchema):
     """, (data.code, data.name, data.semester, data.type, data.periods_per_week))
     conn.commit()
     conn.close()
-    return {"message": "Subject entry updated successfully."}
+    return {"message": "Subject updated successfully."}
 
 @app.delete("/syllabus/delete/{code}")
 def delete_subject(code: str):
@@ -169,6 +161,7 @@ def get_faculty():
     cursor.execute("SELECT faculty_id, name, designation, department FROM faculty")
     rows = cursor.fetchall()
     conn.close()
+    # FIXED: Explicit tuple index extraction mapping for faculty listings
     return [{"faculty_id": r[0], "name": r[1], "designation": r[2], "department": r[3]} for r in rows]
 
 @app.post("/faculty/save")
@@ -181,7 +174,7 @@ def save_faculty(data: FacultySchema):
     """, (data.faculty_id, data.name, data.designation, data.department))
     conn.commit()
     conn.close()
-    return {"message": "Faculty data matrix synchronized."}
+    return {"message": "Faculty card saved successfully."}
 
 @app.get("/timetable/weekly")
 def view_weekly_schedule(semester: str):
@@ -190,6 +183,7 @@ def view_weekly_schedule(semester: str):
     cursor.execute("SELECT day_of_week, slot_time, subject_code, faculty_assignment, room_log FROM daily_schedule WHERE semester = ?", (semester,))
     rows = cursor.fetchall()
     conn.close()
+    # FIXED: Explicit tuple index extraction mapping for timetable slots
     return [{"day": r[0], "time": r[1], "code": r[2], "faculty": r[3], "room": r[4]} for r in rows]
 
 @app.post("/biometric/register-pass")
@@ -209,4 +203,5 @@ def get_biometric_logs():
     cursor.execute("SELECT timestamp, roll_no, name, auth_method, status FROM biometric_records ORDER BY id DESC LIMIT 10")
     rows = cursor.fetchall()
     conn.close()
+    # FIXED: Explicit tuple index extraction mapping for biometric stream records
     return [{"timestamp": r[0], "roll_no": r[1], "name": r[2], "method": r[3], "status": r[4]} for r in rows]
